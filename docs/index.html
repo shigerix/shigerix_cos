@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>集合写真ポーズシミュレーター | ShigerixCOS</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header>
+  <h1>📸 集合写真ポーズシミュレーター</h1>
+  <p>コスプレ撮影の集合写真のフォーメーションを事前にシミュレーションしよう！</p>
+</header>
+
+<main>
+
+  <!-- ===== Formation Presets ===== -->
+  <h2>📐 フォーメーション一覧</h2>
+  <div id="formation-grid"></div>
+
+  <!-- ===== Canvas ===== -->
+  <h2>🖼 配置エリア（ドラッグで動かせます）</h2>
+  <div id="canvas-wrap">
+    <canvas id="stage"></canvas>
+    <div id="controls">
+      <button class="btn btn-primary" id="btn-apply">フォーメーション適用</button>
+      <button class="btn btn-secondary" id="btn-shuffle">シャッフル</button>
+      <button class="btn btn-secondary" id="btn-reset">リセット</button>
+      <button class="btn btn-danger" id="btn-clear">全クリア</button>
+      <span id="count-label">0 人</span>
+    </div>
+  </div>
+
+  <!-- ===== Members ===== -->
+  <h2>👥 メンバー管理</h2>
+  <div id="member-panel">
+    <ul id="member-list"></ul>
+    <div id="add-member-wrap">
+      <input id="new-member-name" type="text" maxlength="20" placeholder="名前を入力（例：ずん子）" />
+      <button class="btn btn-primary" id="btn-add-member">追加</button>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  ShigerixCOS &copy; 2024 – GitHub Pages
+</footer>
+
+<div id="tooltip"></div>
+
+<script>
+/* =====================================================================
+   集合写真ポーズシミュレーター
+   ===================================================================== */
+(function () {
+  'use strict';
+
+  // ---- Canvas setup --------------------------------------------------
+  const canvas = document.getElementById('stage');
+  const ctx    = canvas.getContext('2d');
+
+  function resizeCanvas() {
+    const wrap = canvas.parentElement;
+    canvas.width  = wrap.clientWidth;
+    canvas.height = 420;
+  }
+  window.addEventListener('resize', () => { resizeCanvas(); draw(); });
+  resizeCanvas();
+
+  // ---- State ---------------------------------------------------------
+  let members = ['Aさん', 'Bさん', 'Cさん', 'Dさん', 'Eさん'];
+  let figures  = [];   // { x, y, name, color }
+  let selected = null; // index of dragged figure
+  let dragOffX = 0, dragOffY = 0;
+  let activeFormation = null;
+
+  const COLORS = [
+    '#e91e8c','#9c27b0','#2196f3','#009688','#ff9800',
+    '#f44336','#4caf50','#00bcd4','#ff5722','#607d8b'
+  ];
+
+  // ---- Formations ----------------------------------------------------
+  const formations = [
+    {
+      id: 'line',
+      name: '一列横並び',
+      desc: 'シンプルに横一列で並ぶ基本フォーメーション',
+      fn: (n, w, h) => Array.from({length: n}, (_, i) => ({
+        x: (i + 1) * w / (n + 1),
+        y: h / 2
+      }))
+    },
+    {
+      id: 'pyramid',
+      name: 'ピラミッド',
+      desc: '前列・後列に分かれた三角形の配置',
+      fn: (n, w, h) => {
+        const rows = Math.ceil(Math.sqrt(n));
+        const pts  = [];
+        let rem    = n;
+        for (let r = 0; r < rows && rem > 0; r++) {
+          const cnt = Math.min(r + 1, rem);
+          for (let c = 0; c < cnt; c++) {
+            pts.push({
+              x: w / 2 + (c - (cnt - 1) / 2) * 90,
+              y: h * 0.7 - r * 80
+            });
+          }
+          rem -= cnt;
+        }
+        return pts;
+      }
+    },
+    {
+      id: 'circle',
+      name: '円形',
+      desc: '全員が輪になって並ぶフォーメーション',
+      fn: (n, w, h) => {
+        const cx = w / 2, cy = h / 2, r = Math.min(w, h) * 0.35;
+        return Array.from({length: n}, (_, i) => {
+          const a = (2 * Math.PI * i) / n - Math.PI / 2;
+          return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+        });
+      }
+    },
+    {
+      id: 'v-shape',
+      name: 'Vフォーメーション',
+      desc: '前方に頂点を持つV字の配置',
+      fn: (n, w, h) => {
+        const cx = w / 2, cy = h * 0.45;
+        return Array.from({length: n}, (_, i) => {
+          const half = Math.floor(n / 2);
+          const pos  = i - half;
+          return {
+            x: cx + pos * 70,
+            y: cy + Math.abs(pos) * 55
+          };
+        });
+      }
+    },
+    {
+      id: 'staircase',
+      name: '階段',
+      desc: '斜めに高さを変えながら並ぶ配置',
+      fn: (n, w, h) => Array.from({length: n}, (_, i) => ({
+        x: (i + 1) * w / (n + 1),
+        y: h * 0.3 + i * ((h * 0.55) / Math.max(n - 1, 1))
+      }))
+    },
+    {
+      id: 'two-rows',
+      name: '2列',
+      desc: '前後2列に分かれて並ぶ定番配置',
+      fn: (n, w, h) => {
+        const front = Math.ceil(n / 2);
+        const back  = n - front;
+        const pts   = [];
+        for (let i = 0; i < front; i++) {
+          pts.push({ x: (i + 1) * w / (front + 1), y: h * 0.65 });
+        }
+        for (let i = 0; i < back; i++) {
+          pts.push({ x: (i + 1) * w / (back + 1), y: h * 0.35 });
+        }
+        return pts;
+      }
+    }
+  ];
+
+  // ---- Render formation cards ----------------------------------------
+  const grid = document.getElementById('formation-grid');
+  formations.forEach((f, idx) => {
+    const card = document.createElement('div');
+    card.className = 'formation-card';
+    card.dataset.idx = idx;
+    card.innerHTML = `<h3>${f.name}</h3><p>${f.desc}</p>`;
+    card.addEventListener('click', () => {
+      document.querySelectorAll('.formation-card').forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
+      activeFormation = f;
+    });
+    grid.appendChild(card);
+  });
+
+  // ---- Member management --------------------------------------------
+  function renderMembers() {
+    const ul = document.getElementById('member-list');
+    ul.innerHTML = '';
+    members.forEach((m, i) => {
+      const li = document.createElement('li');
+      li.textContent = m;
+      const btn = document.createElement('button');
+      btn.className = 'del-member';
+      btn.textContent = '×';
+      btn.title = '削除';
+      btn.addEventListener('click', () => {
+        members.splice(i, 1);
+        renderMembers();
+        applyFormation();
+      });
+      li.appendChild(btn);
+      ul.appendChild(li);
+    });
+    document.getElementById('count-label').textContent = `${members.length} 人`;
+  }
+
+  document.getElementById('btn-add-member').addEventListener('click', addMember);
+  document.getElementById('new-member-name').addEventListener('keydown', e => {
+    if (e.key === 'Enter') addMember();
+  });
+
+  function addMember() {
+    const inp = document.getElementById('new-member-name');
+    const name = inp.value.trim();
+    if (!name) return;
+    members.push(name);
+    inp.value = '';
+    renderMembers();
+    applyFormation();
+  }
+
+  // ---- Apply formation -----------------------------------------------
+  function applyFormation() {
+    const f = activeFormation;
+    if (!f || members.length === 0) {
+      figures = [];
+      draw();
+      return;
+    }
+    const pts = f.fn(members.length, canvas.width, canvas.height);
+    figures = members.map((name, i) => ({
+      name,
+      color: COLORS[i % COLORS.length],
+      x: pts[i] ? pts[i].x : canvas.width / 2,
+      y: pts[i] ? pts[i].y : canvas.height / 2
+    }));
+    draw();
+  }
+
+  document.getElementById('btn-apply').addEventListener('click', applyFormation);
+
+  document.getElementById('btn-shuffle').addEventListener('click', () => {
+    // Shuffle only the (x, y) positions; names stay bound to their figure
+    const positions = figures.map(f => ({ x: f.x, y: f.y }));
+    for (let i = positions.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [positions[i], positions[j]] = [positions[j], positions[i]];
+    }
+    figures.forEach((fig, i) => { fig.x = positions[i].x; fig.y = positions[i].y; });
+    draw();
+  });
+
+  document.getElementById('btn-reset').addEventListener('click', applyFormation);
+
+  document.getElementById('btn-clear').addEventListener('click', () => {
+    figures = [];
+    draw();
+  });
+
+  // ---- Draw ----------------------------------------------------------
+  const FIGURE_R = 24;
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // background grid
+    ctx.strokeStyle = 'rgba(233,30,140,.07)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < canvas.width; x += 40) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+    }
+    for (let y = 0; y < canvas.height; y += 40) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+    }
+
+    // camera direction hint
+    ctx.fillStyle = 'rgba(233,30,140,.12)';
+    ctx.fillRect(0, canvas.height - 28, canvas.width, 28);
+    ctx.fillStyle = 'rgba(233,30,140,.5)';
+    ctx.font = '13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('📷 カメラ方向', canvas.width / 2, canvas.height - 10);
+
+    // figures
+    figures.forEach((fig, i) => {
+      const x = fig.x, y = fig.y;
+
+      // shadow
+      ctx.beginPath();
+      ctx.ellipse(x, y + FIGURE_R + 6, FIGURE_R * 0.7, 8, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,0,0,.12)';
+      ctx.fill();
+
+      // body circle
+      ctx.beginPath();
+      ctx.arc(x, y, FIGURE_R, 0, Math.PI * 2);
+      ctx.fillStyle = fig.color;
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      // number
+      ctx.fillStyle = '#fff';
+      ctx.font = `bold ${FIGURE_R * 0.7}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(i + 1, x, y);
+
+      // name tag
+      ctx.font = '11px sans-serif';
+      ctx.textBaseline = 'top';
+      const label = fig.name.length > 6 ? fig.name.slice(0, 5) + '…' : fig.name;
+      const tw = ctx.measureText(label).width;
+      ctx.fillStyle = 'rgba(45,26,46,.75)';
+      ctx.beginPath();
+      ctx.roundRect(x - tw / 2 - 4, y + FIGURE_R + 8, tw + 8, 16, 4);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.fillText(label, x - tw / 2, y + FIGURE_R + 10);
+    });
+  }
+
+  // ---- Drag ----------------------------------------------------------
+  function getPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const src  = e.touches ? e.touches[0] : e;
+    return { x: src.clientX - rect.left, y: src.clientY - rect.top };
+  }
+
+  function hitTest(pos) {
+    for (let i = figures.length - 1; i >= 0; i--) {
+      const dx = pos.x - figures[i].x, dy = pos.y - figures[i].y;
+      if (dx * dx + dy * dy <= (FIGURE_R + 4) ** 2) return i;
+    }
+    return -1;
+  }
+
+  function onDown(e) {
+    e.preventDefault();
+    const pos = getPos(e);
+    const idx = hitTest(pos);
+    if (idx >= 0) {
+      selected = idx;
+      dragOffX = pos.x - figures[idx].x;
+      dragOffY = pos.y - figures[idx].y;
+    }
+  }
+
+  function onMove(e) {
+    if (selected === null) return;
+    e.preventDefault();
+    const pos     = getPos(e);
+    figures[selected].x = Math.max(FIGURE_R, Math.min(canvas.width  - FIGURE_R, pos.x - dragOffX));
+    figures[selected].y = Math.max(FIGURE_R, Math.min(canvas.height - FIGURE_R, pos.y - dragOffY));
+    draw();
+  }
+
+  function onUp() { selected = null; }
+
+  canvas.addEventListener('mousedown',  onDown);
+  canvas.addEventListener('mousemove',  onMove);
+  canvas.addEventListener('mouseup',    onUp);
+  canvas.addEventListener('mouseleave', onUp);
+  canvas.addEventListener('touchstart', onDown, { passive: false });
+  canvas.addEventListener('touchmove',  onMove, { passive: false });
+  canvas.addEventListener('touchend',   onUp);
+
+  // Tooltip on hover
+  const tooltip = document.getElementById('tooltip');
+  canvas.addEventListener('mousemove', e => {
+    if (selected !== null) { tooltip.style.display = 'none'; return; }
+    const pos = getPos(e);
+    const idx = hitTest(pos);
+    if (idx >= 0) {
+      tooltip.textContent = figures[idx].name;
+      tooltip.style.display = 'block';
+      tooltip.style.left = (e.clientX + 14) + 'px';
+      tooltip.style.top  = (e.clientY - 10) + 'px';
+    } else {
+      tooltip.style.display = 'none';
+    }
+  });
+  canvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+
+  // ---- Init ----------------------------------------------------------
+  renderMembers();
+  // auto-apply first formation
+  activeFormation = formations[0];
+  document.querySelector('.formation-card').classList.add('active');
+  applyFormation();
+
+})();
+</script>
+</body>
+</html>
