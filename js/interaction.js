@@ -1,7 +1,9 @@
 // タッチ／マウス操作（Pointer Events）: 選択・移動・関節ドラッグ
 import { computeFigure, JOINT_TO_SEG, SEG_INFO, norm } from './skeleton.js';
+import { scaleFactor } from './render.js';
 
-// clientX/Y を SVG 論理座標へ
+// clientX/Y を SVG 論理座標（viewBox 座標）へ。
+// SVG ルート要素は再描画で消えないので CTM は常に有効。
 function toLogical(svg, clientX, clientY) {
   const pt = svg.createSVGPoint();
   pt.x = clientX; pt.y = clientY;
@@ -11,14 +13,15 @@ function toLogical(svg, clientX, clientY) {
   return { x: p.x, y: p.y };
 }
 
-// clientX/Y を、指定した図形<g>のローカル座標へ
-function toFigureLocal(gEl, svg, clientX, clientY) {
-  const pt = svg.createSVGPoint();
-  pt.x = clientX; pt.y = clientY;
-  const ctm = gEl.getScreenCTM();
-  if (!ctm) return { x: 0, y: 0 };
-  const p = pt.matrixTransform(ctm.inverse());
-  return { x: p.x, y: p.y };
+// 論理座標 → 図形ローカル座標（図形の変換を数式で逆算。DOM 要素に依存しない）
+function logicalToFigureLocal(logical, fig, size) {
+  const base = scaleFactor(size.h);
+  const sx = base * fig.s * (fig.flip ? -1 : 1);
+  const sy = base * fig.s;
+  return {
+    x: (logical.x - fig.x * size.w) / sx,
+    y: (logical.y - fig.y * size.h) / sy,
+  };
 }
 
 // api: { getScene, getSize, getSelected, select, moveFigure, setJoint, onChange }
@@ -35,7 +38,7 @@ export function initInteraction(svg, api) {
     if (figEl) {
       const id = figEl.dataset.fig;
       if (handleEl && id === selected) {
-        drag = { type: 'joint', id, joint: handleEl.dataset.joint, gEl: figEl };
+        drag = { type: 'joint', id, joint: handleEl.dataset.joint };
       } else {
         if (id !== selected) api.select(id);
         const size = api.getSize();
@@ -67,7 +70,8 @@ export function initInteraction(svg, api) {
       const seg = JOINT_TO_SEG[drag.joint];
       const info = SEG_INFO[seg];
       const basePt = joints[info.base] || { x: 0, y: 0 };
-      const local = toFigureLocal(drag.gEl, svg, e.clientX, e.clientY);
+      const logical = toLogical(svg, e.clientX, e.clientY);
+      const local = logicalToFigureLocal(logical, fig, api.getSize());
       const vx = local.x - basePt.x;
       const vy = local.y - basePt.y;
       const worldAngle = Math.atan2(vx, -vy) * 180 / Math.PI;
