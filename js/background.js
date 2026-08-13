@@ -2,12 +2,13 @@
 // bg 値の形式: 'none' | 'preset:<id>' | 'upload:<id>'
 import { putBackground, listBackgrounds, deleteBackground, getBackground } from './storage.js';
 
+// iOS Safari は SVG の <image> に外部SVGファイルを参照すると描画しないため PNG を使う
 export const PRESETS = [
-  { id: 'studio',  label: 'スタジオ', src: 'assets/backgrounds/studio.svg' },
-  { id: 'grid',    label: 'グリッド', src: 'assets/backgrounds/grid.svg' },
-  { id: 'outdoor', label: '屋外',     src: 'assets/backgrounds/outdoor.svg' },
-  { id: 'night',   label: '夜',       src: 'assets/backgrounds/night.svg' },
-  { id: 'white',   label: '白',       src: 'assets/backgrounds/white.svg' },
+  { id: 'studio',  label: 'スタジオ', src: 'assets/backgrounds/studio.png' },
+  { id: 'grid',    label: 'グリッド', src: 'assets/backgrounds/grid.png' },
+  { id: 'outdoor', label: '屋外',     src: 'assets/backgrounds/outdoor.png' },
+  { id: 'night',   label: '夜',       src: 'assets/backgrounds/night.png' },
+  { id: 'white',   label: '白',       src: 'assets/backgrounds/white.png' },
 ];
 
 const PRESET_BY_ID = Object.fromEntries(PRESETS.map((p) => [p.id, p]));
