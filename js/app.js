@@ -17,6 +17,7 @@ const $ = (s) => document.querySelector(s);
 const refs = {
   svg: $('#stage'),
   plate: $('#plate'),
+  clipRect: $('#clipRect'),
   bgImage: $('#bgImage'),
   frame: $('#frame'),
   figuresLayer: $('#figures'),
@@ -25,6 +26,18 @@ const refs = {
 let scene = newScene();
 let selectedId = null;
 let size = canvasSize(scene.ar);
+let bgAdjust = false;
+
+// 背景画像に平行移動＋（フレーム中心基準の）拡大縮小を適用
+function applyBgTransform() {
+  const cx = size.w / 2, cy = size.h / 2;
+  refs.bgImage.setAttribute(
+    'transform',
+    `translate(${scene.bgX} ${scene.bgY}) translate(${cx} ${cy}) scale(${scene.bgS}) translate(${-cx} ${-cy})`
+  );
+}
+
+function hasBgImage() { return scene.bg && scene.bg !== 'none'; }
 
 function getFig(id) { return scene.figures.find((f) => f.id === id); }
 function selectedFig() { return getFig(selectedId); }
@@ -32,12 +45,14 @@ function selectedFig() { return getFig(selectedId); }
 // ---- 描画 ----
 async function render() {
   size = canvasSize(scene.ar);
-  for (const r of [refs.plate, refs.frame]) {
+  for (const r of [refs.plate, refs.frame, refs.clipRect]) {
     r.setAttribute('width', size.w);
     r.setAttribute('height', size.h);
   }
   renderStage(refs, scene, size, selectedId);
+  applyBgTransform();
   updatePanel();
+  updateMode();
   // 背景
   const href = await resolveBgHref(scene.bg);
   if (href) {
@@ -51,10 +66,21 @@ async function render() {
   saveLocal(scene);
 }
 
+// 背景調整モードの表示状態を反映
+function updateMode() {
+  // 背景画像が無ければ調整ボタンを隠し、モードも解除
+  const btn = $('#btnBgAdjust');
+  if (hasBgImage()) btn.classList.remove('hidden');
+  else { btn.classList.add('hidden'); bgAdjust = false; }
+  btn.classList.toggle('active', bgAdjust);
+  document.body.classList.toggle('bg-adjust', bgAdjust);
+  $('#bgBar').classList.toggle('hidden', !bgAdjust);
+}
+
 function updatePanel() {
   const fig = selectedFig();
   const panel = $('#panel');
-  if (!fig) { panel.classList.add('hidden'); return; }
+  if (!fig || bgAdjust) { panel.classList.add('hidden'); return; }
   panel.classList.remove('hidden');
   // カラー選択状態
   document.querySelectorAll('#colorRow .swatch').forEach((el) => {
@@ -67,6 +93,7 @@ const api = {
   getScene: () => scene,
   getSize: () => size,
   getSelected: () => selectedId,
+  getMode: () => (bgAdjust ? 'bg' : 'edit'),
   select: (id) => { selectedId = id; render(); },
   moveFigure: (id, x, y) => {
     const f = getFig(id); if (!f) return;
@@ -77,6 +104,16 @@ const api = {
     const f = getFig(id); if (!f) return;
     f.pose[seg] = angle;
     renderStage(refs, scene, size, selectedId);
+  },
+  resizeFigure: (id, s) => {
+    const f = getFig(id); if (!f) return;
+    f.s = Math.max(0.25, Math.min(4, s));
+    renderStage(refs, scene, size, selectedId);
+  },
+  setBg: (s, x, y) => {
+    scene.bgS = Math.max(0.3, Math.min(8, s));
+    scene.bgX = x; scene.bgY = y;
+    applyBgTransform(); // 背景のみ更新（人形は再描画しない）
   },
   onChange: () => saveLocal(scene),
 };
@@ -107,6 +144,19 @@ $('#btnShare').addEventListener('click', async () => {
   }
 });
 
+// ---- 背景調整モード ----
+$('#btnBgAdjust').addEventListener('click', () => {
+  if (!hasBgImage()) return;
+  bgAdjust = !bgAdjust;
+  if (bgAdjust) selectedId = null; // 背景操作中は人形の選択を外す
+  render();
+});
+$('#bgDone').addEventListener('click', () => { bgAdjust = false; saveLocal(scene); render(); });
+$('#bgReset').addEventListener('click', () => {
+  scene.bgS = 1; scene.bgX = 0; scene.bgY = 0;
+  applyBgTransform(); saveLocal(scene);
+});
+
 // ---- 構図モーダル ----
 const aspectModal = $('#aspectModal');
 $('#btnAspect').addEventListener('click', () => openModal(aspectModal));
@@ -132,6 +182,14 @@ function buildAspectList() {
 const bgModal = $('#bgModal');
 $('#btnBg').addEventListener('click', async () => { await buildBgLists(); openModal(bgModal); });
 
+// 背景を選ぶと位置・スケールはリセット（中央から開始）
+function chooseBg(val) {
+  scene.bg = val;
+  scene.bgS = 1; scene.bgX = 0; scene.bgY = 0;
+  refreshBgActive();
+  render();
+}
+
 $('#bgUpload').addEventListener('change', async (e) => {
   const file = e.target.files && e.target.files[0];
   e.target.value = '';
@@ -139,10 +197,9 @@ $('#bgUpload').addEventListener('change', async (e) => {
   try {
     const dataUrl = await fileToDataUrl(file);
     const rec = await saveUpload(file.name, dataUrl);
-    scene.bg = 'upload:' + rec.id;
+    chooseBg('upload:' + rec.id);
     await buildBgLists();
-    render();
-    toast('背景を追加しました');
+    toast('背景を追加しました。「🎯背景調整」で位置を調整できます');
   } catch (err) {
     toast('画像の読み込みに失敗しました');
   }
@@ -152,10 +209,10 @@ async function buildBgLists() {
   // プリセット
   const pl = $('#presetList');
   pl.innerHTML = '';
-  pl.appendChild(thumb('背景なし', null, scene.bg === 'none', () => { scene.bg = 'none'; refreshBgActive(); render(); }, 'none'));
+  pl.appendChild(thumb('背景なし', null, scene.bg === 'none', () => chooseBg('none'), 'none'));
   PRESETS.forEach((p) => {
     const val = 'preset:' + p.id;
-    pl.appendChild(thumb(p.label, p.src, scene.bg === val, () => { scene.bg = val; refreshBgActive(); render(); }));
+    pl.appendChild(thumb(p.label, p.src, scene.bg === val, () => chooseBg(val)));
   });
   // アップロード
   const ul = $('#uploadList');
@@ -169,7 +226,7 @@ async function buildBgLists() {
   }
   uploads.forEach((rec) => {
     const val = 'upload:' + rec.id;
-    const t = thumb(rec.name, rec.dataUrl, scene.bg === val, () => { scene.bg = val; refreshBgActive(); render(); });
+    const t = thumb(rec.name, rec.dataUrl, scene.bg === val, () => chooseBg(val));
     const del = document.createElement('button');
     del.className = 'del';
     del.textContent = '✕';

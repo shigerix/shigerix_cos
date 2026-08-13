@@ -11,6 +11,7 @@
       <button id="btnAspect" class="tb-btn" title="構図">📐 <span id="aspectLabel">縦 3:4</span></button>
       <button id="btnAdd" class="tb-btn">＋ 人形</button>
       <button id="btnBg" class="tb-btn">🖼 背景</button>
+      <button id="btnBgAdjust" class="tb-btn hidden">🎯 背景調整</button>
     </div>
     <div class="tb-right">
       <button id="btnShare" class="tb-btn primary">🔗 共有</button>
@@ -20,13 +21,25 @@
 
   <main id="stageWrap">
     <svg id="stage" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <clipPath id="frameClip"><rect id="clipRect" x="0" y="0" /></clipPath>
+      </defs>
       <rect id="plate" x="0" y="0" />
-      <image id="bgImage" x="0" y="0" preserveAspectRatio="xMidYMid slice" />
+      <g clip-path="url(#frameClip)">
+        <image id="bgImage" x="0" y="0" preserveAspectRatio="xMidYMid slice" />
+      </g>
       <rect id="frame" x="0" y="0" />
       <g id="figures"></g>
     </svg>
     <p id="hint">人形をタップ→下のポーズや関節（丸）を操作。ドラッグで移動。</p>
   </main>
+
+  <footer id="bgBar" class="hidden">
+    <span class="bg-hint">背景を1本指でドラッグ移動・2本指ピンチで拡大縮小</span>
+    <div class="spacer"></div>
+    <button class="ctl" id="bgReset">位置リセット</button>
+    <button class="ctl primary" id="bgDone">完了</button>
+  </footer>
 
   <footer id="panel" class="hidden">
     <div class="panel-row poses" id="poseRow"></div>

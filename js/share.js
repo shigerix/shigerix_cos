@@ -15,11 +15,16 @@ function b64urlDecode(str) {
 
 // 共有用のコンパクト表現に変換
 export function encodeScene(scene) {
-  const bg = scene.bg && scene.bg.startsWith('upload:') ? 'none' : scene.bg;
+  const isUpload = scene.bg && scene.bg.startsWith('upload:');
+  const bg = isUpload ? 'none' : scene.bg;
   const obj = {
     v: 1,
     a: scene.ar,
     b: bg,
+    // アップロード背景は共有されないので位置情報も送らない
+    bs: isUpload ? 100 : Math.round((scene.bgS ?? 1) * 100),
+    bx: isUpload ? 0 : Math.round(scene.bgX ?? 0),
+    by: isUpload ? 0 : Math.round(scene.bgY ?? 0),
     f: scene.figures.map((fg) => ({
       x: Math.round(fg.x * 1000),
       y: Math.round(fg.y * 1000),
@@ -37,6 +42,9 @@ export function decodeScene(code) {
   const scene = {
     ar: obj.a,
     bg: obj.b || 'none',
+    bgS: (obj.bs ?? 100) / 100,
+    bgX: obj.bx ?? 0,
+    bgY: obj.by ?? 0,
     figures: (obj.f || []).map((fo) => {
       const pose = {};
       (fo.p || []).forEach((val, i) => { if (EDITABLE[i]) pose[EDITABLE[i]] = val; });

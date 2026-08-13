@@ -24,7 +24,19 @@ let nextId = 1;
 function genId() { return 'f' + (nextId++) + Date.now().toString(36).slice(-3); }
 
 export function newScene() {
-  return { v: 1, ar: '3:4', bg: 'none', figures: [] };
+  // bgS: 背景スケール, bgX/bgY: 背景の平行移動（論理座標=viewBox単位）
+  return { v: 1, ar: '3:4', bg: 'none', bgS: 1, bgX: 0, bgY: 0, figures: [] };
+}
+
+const MAX_FIGURES = 200;
+const HEX_RE = /^#[0-9a-fA-F]{3,8}$/;
+
+function safeColor(c) {
+  return (typeof c === 'string' && HEX_RE.test(c)) ? c : COLORS[0];
+}
+function safeAngle(v) {
+  const n = +v;
+  return Number.isFinite(n) ? ((n % 360) + 360) % 360 : 0;
 }
 
 export function newFigure(x = 0.5, y = 0.55, color = COLORS[0]) {
@@ -87,17 +99,25 @@ export function normalizeScene(s) {
   const scene = newScene();
   if (!s || typeof s !== 'object') return scene;
   if (ASPECTS.some((a) => a.id === s.ar)) scene.ar = s.ar;
-  if (typeof s.bg === 'string') scene.bg = s.bg;
+  if (typeof s.bg === 'string' && s.bg.length <= 64) scene.bg = s.bg;
+  scene.bgS = clamp(num(s.bgS, 1), 0.3, 8);
+  scene.bgX = clamp(num(s.bgX, 0), -4000, 4000);
+  scene.bgY = clamp(num(s.bgY, 0), -4000, 4000);
   if (Array.isArray(s.figures)) {
-    scene.figures = s.figures.map((f) => ({
-      id: genId(),
-      x: clamp01(num(f.x, 0.5)),
-      y: clamp01(num(f.y, 0.55)),
-      s: clamp(num(f.s, 1), 0.2, 4),
-      flip: !!f.flip,
-      color: typeof f.color === 'string' ? f.color : COLORS[0],
-      pose: { ...DEFAULT_POSE, ...(f.pose && typeof f.pose === 'object' ? f.pose : {}) },
-    }));
+    scene.figures = s.figures.slice(0, MAX_FIGURES).map((f) => {
+      const pose = { ...DEFAULT_POSE };
+      const src = f && typeof f.pose === 'object' && f.pose ? f.pose : {};
+      for (const k in DEFAULT_POSE) if (k in src) pose[k] = safeAngle(src[k]);
+      return {
+        id: genId(),
+        x: clamp01(num(f.x, 0.5)),
+        y: clamp01(num(f.y, 0.55)),
+        s: clamp(num(f.s, 1), 0.2, 4),
+        flip: !!f.flip,
+        color: safeColor(f.color),
+        pose,
+      };
+    });
   }
   return scene;
 }

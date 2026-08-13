@@ -51,6 +51,24 @@ body {
 }
 .tb-btn:active { transform: scale(0.96); }
 .tb-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tb-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tb-btn.hidden { display: none; }
+
+/* 背景調整モード */
+#bgBar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
+}
+#bgBar.hidden { display: none; }
+.bg-hint { font-size: 12px; color: var(--muted); }
+.ctl.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* 背景調整中は棒人形を薄く表示して「今は背景を触っている」ことを示す */
+body.bg-adjust #figures { opacity: 0.35; pointer-events: none; }
 
 /* ステージ */
 #stageWrap {
