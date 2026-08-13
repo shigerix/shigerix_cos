@@ -1,0 +1,187 @@
+/* === Reset & Base === */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --primary: #e91e8c;
+  --primary-dark: #c0166e;
+  --bg: #fff0f8;
+  --surface: #ffffff;
+  --text: #2d1a2e;
+  --muted: #7a5c80;
+  --border: #f0c8e0;
+  --shadow: 0 2px 12px rgba(233,30,140,.12);
+  --radius: 12px;
+}
+
+body {
+  font-family: 'Segoe UI', 'Noto Sans JP', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* === Header === */
+header {
+  background: linear-gradient(135deg, var(--primary) 0%, #9c27b0 100%);
+  color: #fff;
+  padding: 2rem 1rem 1.5rem;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,.2);
+}
+header h1 { font-size: clamp(1.4rem, 4vw, 2.2rem); letter-spacing: .05em; }
+header p  { margin-top: .4rem; opacity: .9; font-size: .95rem; }
+
+/* === Main layout === */
+main {
+  max-width: 960px;
+  margin: 2rem auto;
+  padding: 0 1rem 3rem;
+}
+
+/* === Section titles === */
+h2 {
+  font-size: 1.2rem;
+  color: var(--primary-dark);
+  border-left: 4px solid var(--primary);
+  padding-left: .6rem;
+  margin: 2rem 0 1rem;
+}
+
+/* === Formation Grid === */
+#formation-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.formation-card {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: transform .15s, box-shadow .15s, border-color .15s;
+  user-select: none;
+}
+.formation-card:hover  { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(233,30,140,.2); }
+.formation-card.active { border-color: var(--primary); background: #fff0f8; }
+.formation-card h3     { font-size: 1rem; color: var(--primary-dark); margin-bottom: .4rem; }
+.formation-card p      { font-size: .85rem; color: var(--muted); }
+
+/* === Canvas area === */
+#canvas-wrap {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+#stage {
+  width: 100%;
+  height: 420px;
+  display: block;
+  background: #fce4f4;
+  cursor: default;
+  touch-action: none;
+}
+
+/* === Controls bar === */
+#controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .6rem;
+  align-items: center;
+  padding: .8rem 1rem;
+  background: #fdf3fb;
+  border-top: 1px solid var(--border);
+}
+
+.btn {
+  padding: .45rem 1rem;
+  border: none;
+  border-radius: 8px;
+  font-size: .9rem;
+  cursor: pointer;
+  transition: background .15s, transform .1s;
+}
+.btn:active { transform: scale(.97); }
+
+.btn-primary   { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-dark); }
+.btn-secondary { background: #ede0f0; color: var(--text); }
+.btn-secondary:hover { background: #dbc8e8; }
+.btn-danger    { background: #f44336; color: #fff; }
+.btn-danger:hover { background: #c62828; }
+
+#count-label { font-size: .9rem; color: var(--muted); margin-left: auto; }
+
+/* === Member list panel === */
+#member-panel {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1rem;
+}
+
+#member-list {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin-top: .6rem;
+}
+#member-list li {
+  background: #fce4f4;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: .2rem .8rem;
+  font-size: .85rem;
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+}
+#member-list li .del-member {
+  background: none; border: none; cursor: pointer;
+  color: var(--primary); font-size: 1rem; line-height: 1;
+}
+
+#add-member-wrap {
+  display: flex;
+  gap: .5rem;
+  margin-top: .8rem;
+}
+#new-member-name {
+  flex: 1;
+  padding: .4rem .7rem;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: .9rem;
+  outline: none;
+}
+#new-member-name:focus { border-color: var(--primary); }
+
+/* === Tooltip === */
+#tooltip {
+  position: fixed;
+  background: rgba(45,26,46,.85);
+  color: #fff;
+  padding: .3rem .7rem;
+  border-radius: 6px;
+  font-size: .8rem;
+  pointer-events: none;
+  display: none;
+  z-index: 9999;
+}
+
+/* === Footer === */
+footer {
+  text-align: center;
+  padding: 1.5rem;
+  font-size: .8rem;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+}
