@@ -39,6 +39,13 @@ function applyBgTransform() {
 
 function hasBgImage() { return scene.bg && scene.bg !== 'none'; }
 
+// iOS Safari は viewport の user-scalable=no を無視するため、ページ全体の
+// ピンチズーム（ツールバー等まで拡大される）を明示的に抑止する。
+// キャンバス内の拡大縮小は Pointer Events による自前処理なので影響しない。
+['gesturestart', 'gesturechange', 'gestureend'].forEach((ev) => {
+  document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+});
+
 function getFig(id) { return scene.figures.find((f) => f.id === id); }
 function selectedFig() { return getFig(selectedId); }
 

@@ -17,6 +17,7 @@ body {
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
   overscroll-behavior: none;
+  touch-action: manipulation; /* ダブルタップズーム抑止（スクロールは可） */
 }
 
 #app {
