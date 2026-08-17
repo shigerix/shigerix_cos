@@ -159,4 +159,17 @@ export function initInteraction(svg, api) {
   }
   svg.addEventListener('pointerup', end);
   svg.addEventListener('pointercancel', end);
+
+  // アプリ内ブラウザはホスト UI に切り替わると pointerup を落とすことがある。
+  // 取り残したポインタが残るとポインタキャプチャや誤ったジェスチャが続くのでリセットする。
+  function reset() {
+    for (const id of pointers.keys()) {
+      try { svg.releasePointerCapture(id); } catch (_) { /* noop */ }
+    }
+    if (gesture) api.onChange();
+    pointers.clear();
+    gesture = null;
+  }
+  document.addEventListener('visibilitychange', () => { if (document.hidden) reset(); });
+  window.addEventListener('blur', reset);
 }

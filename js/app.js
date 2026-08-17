@@ -46,6 +46,43 @@ function hasBgImage() { return scene.bg && scene.bg !== 'none'; }
   document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
 });
 
+// ---- タップ処理 ----
+// X アプリ内ブラウザなどの WebView では合成 click が届かないことがあるため、
+// pointerup を主経路にし、直後に来る click は捨てる。
+// sel を渡すと委譲になる（el 配下で sel に一致した要素をタップ対象とする）。
+const TAP_SLOP = 12; // これ以上動いたらスクロール／ドラッグ扱い
+
+function onTap(el, fn, sel = null) {
+  let down = null; // { target, x, y }
+  let handledAt = 0;
+  const hit = (t) => (sel ? (t && t.closest ? t.closest(sel) : null) : el);
+
+  el.addEventListener('pointerdown', (e) => {
+    const target = e.isPrimary ? hit(e.target) : null;
+    down = target ? { target, x: e.clientX, y: e.clientY } : null;
+  });
+  el.addEventListener('pointerup', (e) => {
+    const start = down;
+    down = null;
+    if (!start || !e.isPrimary) return;
+    if (hit(e.target) !== start.target) return;
+    if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > TAP_SLOP) return;
+    handledAt = Date.now();
+    fn(e, start.target);
+  });
+  el.addEventListener('pointercancel', () => { down = null; });
+  el.addEventListener('click', (e) => {
+    if (Date.now() - handledAt < 700) {
+      // pointerup で処理済み。重複した click は親にも伝えない
+      // （子が pointerup を stopPropagation した場合に親が二重に反応するのを防ぐ）
+      e.stopPropagation();
+      return;
+    }
+    const target = hit(e.target);
+    if (target) fn(e, target);
+  });
+}
+
 function getFig(id) { return scene.figures.find((f) => f.id === id); }
 function selectedFig() { return getFig(selectedId); }
 
@@ -125,48 +162,112 @@ const api = {
   onChange: () => saveLocal(scene),
 };
 
+// ---- ダイアログ ----
+// アプリ内ブラウザは window.confirm / prompt を表示せず即座に false を返すため、
+// 確認と URL 表示は自前のモーダルで行う（Promise<boolean> を返す）。
+const dialog = $('#dialog');
+const dlgText = $('#dlgText');
+let dlgResolve = null;
+
+function openDialog({ title, message = '', text = null, ok = 'OK', cancel = 'キャンセル' }) {
+  settleDialog(false); // 前回が開いたままなら先に解決しておく
+  $('#dlgTitle').textContent = title;
+  $('#dlgMsg').textContent = message;
+  dlgText.value = text || '';
+  dlgText.classList.toggle('hidden', !text);
+  $('#dlgOk').textContent = ok;
+  $('#dlgCancel').textContent = cancel;
+  openModal(dialog);
+  return new Promise((resolve) => { dlgResolve = resolve; });
+}
+
+function settleDialog(val) {
+  if (!dlgResolve) return;
+  const resolve = dlgResolve;
+  dlgResolve = null;
+  closeModal(dialog);
+  resolve(val);
+}
+
+// クリップボードへコピー。失敗したら選択状態にしてダイアログは開いたままにする。
+async function copyDialogText() {
+  try {
+    await navigator.clipboard.writeText(dlgText.value);
+    return true;
+  } catch (e) { /* 続けて execCommand を試す */ }
+  try {
+    dlgText.focus();
+    dlgText.setSelectionRange(0, dlgText.value.length);
+    if (document.execCommand('copy')) return true;
+  } catch (e) { /* noop */ }
+  return false;
+}
+
+onTap($('#dlgOk'), async () => {
+  if (!dlgText.classList.contains('hidden')) {
+    if (!(await copyDialogText())) { toast('長押しで選択してコピーしてください'); return; }
+    toast('共有リンクをコピーしました');
+  }
+  settleDialog(true);
+});
+onTap($('#dlgCancel'), () => settleDialog(false));
+onTap(dialog, (e) => {
+  if (e.target === dialog || (e.target.hasAttribute && e.target.hasAttribute('data-close'))) settleDialog(false);
+});
+
 // ---- ツールバー ----
-$('#btnAdd').addEventListener('click', () => {
+onTap($('#btnAdd'), () => {
   const f = addFigure(scene);
   selectedId = f.id;
   render();
 });
 
-$('#btnReset').addEventListener('click', () => {
-  if (!confirm('すべての人形を消してリセットしますか？')) return;
+onTap($('#btnReset'), async () => {
+  const yes = await openDialog({
+    title: '全消去',
+    message: 'すべての人形を消してリセットしますか？',
+    ok: '消去する',
+  });
+  if (!yes) return;
   scene = newScene();
   addFigure(scene);
   selectedId = scene.figures[0].id;
   render();
 });
 
-$('#btnShare').addEventListener('click', async () => {
+onTap($('#btnShare'), async () => {
   const url = buildShareUrl(scene);
   try {
     await navigator.clipboard.writeText(url);
     toast('共有リンクをコピーしました');
   } catch (e) {
-    // クリップボード不可時はプロンプト表示
-    window.prompt('この URL をコピーして共有してください', url);
+    // クリップボード不可時は URL をダイアログで表示（prompt は WebView で出ない）
+    await openDialog({
+      title: '共有リンク',
+      message: 'この URL をコピーして共有してください',
+      text: url,
+      ok: 'コピー',
+      cancel: '閉じる',
+    });
   }
 });
 
 // ---- 背景調整モード ----
-$('#btnBgAdjust').addEventListener('click', () => {
+onTap($('#btnBgAdjust'), () => {
   if (!hasBgImage()) return;
   bgAdjust = !bgAdjust;
   if (bgAdjust) selectedId = null; // 背景操作中は人形の選択を外す
   render();
 });
-$('#bgDone').addEventListener('click', () => { bgAdjust = false; saveLocal(scene); render(); });
-$('#bgReset').addEventListener('click', () => {
+onTap($('#bgDone'), () => { bgAdjust = false; saveLocal(scene); render(); });
+onTap($('#bgReset'), () => {
   scene.bgS = 1; scene.bgX = 0; scene.bgY = 0;
   applyBgTransform(); saveLocal(scene);
 });
 
 // ---- 構図モーダル ----
 const aspectModal = $('#aspectModal');
-$('#btnAspect').addEventListener('click', () => openModal(aspectModal));
+onTap($('#btnAspect'), () => openModal(aspectModal));
 function buildAspectList() {
   const list = $('#aspectList');
   list.innerHTML = '';
@@ -174,7 +275,7 @@ function buildAspectList() {
     const b = document.createElement('button');
     b.className = 'chip' + (a.id === scene.ar ? ' active' : '');
     b.textContent = a.label;
-    b.addEventListener('click', () => {
+    onTap(b, () => {
       scene.ar = a.id;
       $('#aspectLabel').textContent = a.label;
       buildAspectList();
@@ -187,7 +288,7 @@ function buildAspectList() {
 
 // ---- 背景モーダル ----
 const bgModal = $('#bgModal');
-$('#btnBg').addEventListener('click', async () => { await buildBgLists(); openModal(bgModal); });
+onTap($('#btnBg'), async () => { await buildBgLists(); openModal(bgModal); });
 
 // 背景を選ぶと位置・スケールはリセット（中央から開始）
 function chooseBg(val) {
@@ -237,8 +338,8 @@ async function buildBgLists() {
     const del = document.createElement('button');
     del.className = 'del';
     del.textContent = '✕';
-    del.addEventListener('click', async (ev) => {
-      ev.stopPropagation();
+    onTap(del, async (ev) => {
+      ev.stopPropagation(); // 親サムネの選択を発火させない
       await removeUpload(rec.id);
       if (scene.bg === val) scene.bg = 'none';
       await buildBgLists();
@@ -264,7 +365,7 @@ function thumb(label, src, active, onClick, extraClass) {
     cap.textContent = label;
     d.appendChild(cap);
   }
-  d.addEventListener('click', onClick);
+  onTap(d, onClick);
   return d;
 }
 
@@ -276,7 +377,7 @@ function buildPoseRow() {
     const b = document.createElement('button');
     b.className = 'pose-btn';
     b.textContent = p.label;
-    b.addEventListener('click', () => {
+    onTap(b, () => {
       const f = selectedFig(); if (!f) return;
       f.pose = { ...DEFAULT_POSE, ...POSE_BY_ID[p.id].pose };
       render();
@@ -293,7 +394,7 @@ function buildColorRow() {
     b.className = 'swatch';
     b.dataset.color = c;
     b.style.background = c;
-    b.addEventListener('click', () => {
+    onTap(b, () => {
       const f = selectedFig(); if (!f) return;
       f.color = c; render();
     });
@@ -301,9 +402,7 @@ function buildColorRow() {
   });
 }
 
-$('#panel').addEventListener('click', (e) => {
-  const btn = e.target.closest('.ctl');
-  if (!btn) return;
+onTap($('#panel'), (e, btn) => {
   const f = selectedFig(); if (!f) return;
   const act = btn.dataset.act;
   if (act === 'bigger') f.s = Math.min(4, f.s * 1.12);
@@ -312,14 +411,15 @@ $('#panel').addEventListener('click', (e) => {
   else if (act === 'dup') { const c = duplicateFigure(scene, f.id); if (c) selectedId = c.id; }
   else if (act === 'del') { removeFigure(scene, f.id); selectedId = null; }
   render();
-});
+}, '.ctl');
 
 // ---- モーダル共通 ----
 function openModal(m) { m.classList.remove('hidden'); }
 function closeModal(m) { m.classList.add('hidden'); }
 document.querySelectorAll('.modal').forEach((m) => {
-  m.addEventListener('click', (e) => {
-    if (e.target === m || e.target.hasAttribute('data-close')) closeModal(m);
+  if (m === dialog) return; // #dialog は Promise を解決する必要があるので自前で閉じる
+  onTap(m, (e) => {
+    if (e.target === m || (e.target.hasAttribute && e.target.hasAttribute('data-close'))) closeModal(m);
   });
 });
 

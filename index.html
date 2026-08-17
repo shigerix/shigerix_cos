@@ -46,8 +46,8 @@
     <div class="panel-row controls">
       <div class="colors" id="colorRow"></div>
       <div class="spacer"></div>
-      <button class="ctl" data-act="smaller">➖</button>
-      <button class="ctl" data-act="bigger">➕</button>
+      <button class="ctl" data-act="smaller" aria-label="小さくする">－ 小</button>
+      <button class="ctl" data-act="bigger" aria-label="大きくする">＋ 大</button>
       <button class="ctl" data-act="flip">↔ 反転</button>
       <button class="ctl" data-act="dup">⧉ 複製</button>
       <button class="ctl danger" data-act="del">🗑 削除</button>
@@ -75,6 +75,19 @@
     <div id="presetList" class="thumb-list"></div>
     <h3>アップロード済み <span class="note">（この端末のみ・共有リンクには含まれません）</span></h3>
     <div id="uploadList" class="thumb-list"></div>
+  </div>
+</div>
+
+<!-- 汎用ダイアログ（in-app ブラウザは confirm/prompt を表示しないため自前で用意） -->
+<div id="dialog" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head"><h2 id="dlgTitle"></h2><button class="x" data-close>✕</button></div>
+    <p id="dlgMsg"></p>
+    <input id="dlgText" class="dlg-text hidden" type="text" readonly />
+    <div class="dlg-actions">
+      <button class="ctl" id="dlgCancel">キャンセル</button>
+      <button class="ctl primary" id="dlgOk">OK</button>
+    </div>
   </div>
 </div>
 
